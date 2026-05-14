@@ -13,7 +13,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                git branch: 'main', url: 'https://github.com/FATSORALY/app-project.git'
             }
         }
         
@@ -52,20 +52,28 @@ pipeline {
         
         stage('Push ECR') {
             steps {
-                sh '''
-                    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
-                    docker push $ECR_REPO:$IMAGE_TAG
-                    docker push $ECR_REPO:latest
-                '''
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins-creds', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                    sh '''
+                        aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+                        aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+                        aws configure set region $AWS_REGION
+                        
+                        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
+                        docker push $ECR_REPO:$IMAGE_TAG
+                        docker push $ECR_REPO:latest
+                    '''
+                }
             }
         }
         
         stage('Deploy EKS') {
             steps {
-                sh '''
-                    aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION || true
-                    kubectl set image deployment/flask-app flask-app=$ECR_REPO:$IMAGE_TAG -n $NAMESPACE || true
-                '''
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins-creds', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                    sh '''
+                        aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION || true
+                        kubectl set image deployment/flask-app flask-app=$ECR_REPO:$IMAGE_TAG -n $NAMESPACE || true
+                    '''
+                }
             }
         }
     }
