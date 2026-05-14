@@ -26,11 +26,8 @@ pipeline {
                     pip install --upgrade pip
                     pip install -r requirements.txt pytest
                     
-                    # Installation AWS CLI v2
-                    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-                    unzip -q awscliv2.zip
-                    ./aws/install --update
-                    rm -rf aws awscliv2.zip
+                    # AWS CLI déjà installé via apt (plus simple)
+                    apt-get install -y awscli
                 '''
             }
         }
@@ -71,7 +68,6 @@ pipeline {
                 sh '''
                     aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION || true
                     kubectl set image deployment/flask-app flask-app=$ECR_REPO:$IMAGE_TAG -n $NAMESPACE || true
-                    kubectl rollout status deployment/flask-app -n $NAMESPACE --timeout=90s || true
                 '''
             }
         }
