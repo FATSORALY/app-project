@@ -19,9 +19,9 @@ pipeline {
         
         stage('Setup') {
             steps {
-                sh 'whoami'  // Pour vérifier qu'on est root
                 sh '''
-                    apt-get update && apt-get install -y python3 python3-pip python3-venv docker.io awscli curl unzip
+                    whoami
+                    apt-get update && apt-get install -y python3 python3-pip python3-venv docker.io awscli
                     python3 -m venv venv
                     . venv/bin/activate
                     pip install --upgrade pip
@@ -38,7 +38,9 @@ pipeline {
                 '''
             }
             post {
-                always { junit 'test-results.xml' }
+                always {
+                    junit 'test-results.xml'
+                }
             }
         }
         
@@ -70,7 +72,7 @@ pipeline {
     }
     
     post {
-        success { echo "🎉 SUCCESS - Pipeline terminé !" }
-        failure { echo "❌ ÉCHEC Pipeline" }
+        success { echo "🎉 Pipeline terminé avec succès !" }
+        failure { echo "❌ Pipeline échoué" }
     }
 }
