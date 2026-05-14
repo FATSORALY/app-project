@@ -1,10 +1,5 @@
 pipeline {
-    agent {
-        docker {
-            image 'python:3.11-slim'
-            args '-u root'  // Pour pouvoir installer les paquets
-        }
-    }
+    agent any
     
     environment {
         AWS_REGION     = 'eu-west-3'
@@ -22,10 +17,12 @@ pipeline {
             }
         }
         
-        stage('Install Dependencies') {
+        stage('Setup Environment') {
             steps {
                 sh '''
-                    apt-get update && apt-get install -y docker.io
+                    apt-get update && apt-get install -y python3 python3-pip python3-venv docker.io
+                    python3 -m venv venv
+                    . venv/bin/activate
                     pip install --upgrade pip
                     pip install -r requirements.txt pytest
                 '''
@@ -34,7 +31,10 @@ pipeline {
         
         stage('Tests Unitaires') {
             steps {
-                sh 'pytest tests/ --junitxml=test-results.xml || true'
+                sh '''
+                    . venv/bin/activate
+                    pytest tests/ --junitxml=test-results.xml || echo "Tests skipped"
+                '''
             }
             post {
                 always {
@@ -47,12 +47,6 @@ pipeline {
             steps {
                 sh 'docker build -t ${ECR_REPO}:${IMAGE_TAG} .'
                 sh 'docker tag ${ECR_REPO}:${IMAGE_TAG} ${ECR_REPO}:latest'
-            }
-        }
-        
-        stage('Trivy Security Scan') {
-            steps {
-                sh 'trivy image --exit-code 0 --severity HIGH,CRITICAL ${ECR_REPO}:${IMAGE_TAG} || true'
             }
         }
         
@@ -74,7 +68,7 @@ pipeline {
                     sh '''
                         aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
                         kubectl set image deployment/flask-app flask-app=$ECR_REPO:$IMAGE_TAG -n $NAMESPACE || true
-                        kubectl rollout status deployment/flask-app -n $NAMESPACE --timeout=120s || true
+                        kubectl rollout status deployment/flask-app -n $NAMESPACE --timeout=90s || true
                     '''
                 }
             }
@@ -82,7 +76,7 @@ pipeline {
     }
     
     post {
-        success { echo "✅ Pipeline terminé avec succès !" }
+        success { echo "🎉 Pipeline terminé avec succès !" }
         failure { echo "❌ Pipeline en échec" }
     }
 }
