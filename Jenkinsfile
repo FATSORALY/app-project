@@ -17,14 +17,20 @@ pipeline {
             }
         }
         
-        stage('Setup') {
+        stage('Setup Environment') {
             steps {
                 sh '''
-                    apt-get update && apt-get install -y python3 python3-pip python3-venv docker.io
+                    apt-get update && apt-get install -y python3 python3-pip python3-venv docker.io curl unzip
                     python3 -m venv venv
                     . venv/bin/activate
                     pip install --upgrade pip
                     pip install -r requirements.txt pytest
+                    
+                    # Installation AWS CLI v2
+                    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+                    unzip -q awscliv2.zip
+                    ./aws/install --update
+                    rm -rf aws awscliv2.zip
                 '''
             }
         }
@@ -52,24 +58,21 @@ pipeline {
         
         stage('Push to ECR') {
             steps {
-                withAWS(credentials: 'aws-jenkins-creds', region: AWS_REGION) {
-                    sh '''
-                        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
-                        docker push $ECR_REPO:$IMAGE_TAG
-                        docker push $ECR_REPO:latest
-                    '''
-                }
+                sh '''
+                    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
+                    docker push $ECR_REPO:$IMAGE_TAG
+                    docker push $ECR_REPO:latest
+                '''
             }
         }
         
         stage('Deploy to EKS') {
             steps {
-                withAWS(credentials: 'aws-jenkins-creds', region: AWS_REGION) {
-                    sh '''
-                        aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION || true
-                        kubectl set image deployment/flask-app flask-app=$ECR_REPO:$IMAGE_TAG -n $NAMESPACE || true
-                    '''
-                }
+                sh '''
+                    aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION || true
+                    kubectl set image deployment/flask-app flask-app=$ECR_REPO:$IMAGE_TAG -n $NAMESPACE || true
+                    kubectl rollout status deployment/flask-app -n $NAMESPACE --timeout=90s || true
+                '''
             }
         }
     }
